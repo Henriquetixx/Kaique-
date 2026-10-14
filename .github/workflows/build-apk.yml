@@ -55,7 +55,14 @@ jobs:
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.9'. 
+        
+      - name: Corrigir AndroidX
+        working-directory: projeto/kaique-ai
+        shell: bash
+        run: |
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
 
       - name: Compilar APK
         working-directory: projeto/kaique-ai
