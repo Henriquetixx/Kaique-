@@ -1,3 +1,4 @@
+
 name: Compilar Kaique AI V4
 
 on:
@@ -12,7 +13,7 @@ permissions:
 jobs:
   android:
     name: Compilar Android
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -25,55 +26,88 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar ferramentas Android
+      - name: Verificar Android SDK
         shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager \
+          set -e
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          test -d "$ANDROID_HOME"
+          ls -la "$ANDROID_HOME"
+          java -version
+
+      - name: Instalar componentes Android
+        shell: bash
+        run: |
+          set -e
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" \
+              -type f -name sdkmanager | head -n 1)
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERRO: sdkmanager nao encontrado"
+            exit 1
+          fi
+
+          echo "Usando: $SDKMANAGER"
+
+          yes | "$SDKMANAGER" --licenses || true
+
+          "$SDKMANAGER" --install \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Extrair projeto Kaique AI
+      - name: Extrair Kaique AI
         shell: bash
         run: |
+          set -e
+          test -f kaique-ai-v4-corrigido.zip
+
           mkdir -p projeto
           unzip -q -o kaique-ai-v4-corrigido.zip -d projeto
-          find projeto -maxdepth 4 -name build.gradle.kts -print
+
+          echo "Arquivos Gradle encontrados:"
+          find projeto -name build.gradle.kts -print
+
           test -f projeto/kaique-ai/app/build.gradle.kts
 
       - name: Configurar AndroidX
-        working-directory: projeto/kaique-ai
         shell: bash
+        working-directory: projeto/kaique-ai
         run: |
           touch gradle.properties
-          grep -q '^android.useAndroidX=' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
-          grep -q '^android.enableJetifier=' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
 
-      - name: Configurar Gradle
+          grep -q '^android.useAndroidX=' gradle.properties || \
+            echo 'android.useAndroidX=true' >> gradle.properties
+
+          grep -q '^android.enableJetifier=' gradle.properties || \
+            echo 'android.enableJetifier=true' >> gradle.properties
+
+      - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
       - name: Compilar APK
-        working-directory: projeto/kaique-ai
         shell: bash
+        working-directory: projeto/kaique-ai
         run: |
           gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Mostrar APK gerado
-        if: success()
+      - name: Verificar APK
         shell: bash
         run: |
-          find projeto/kaique-ai/app/build/outputs/apk \
+          find projeto/kaique-ai/app/build/outputs \
             -type f -name "*.apk" -print
-          test -f projeto/kaique-ai/app/build/outputs/apk/debug/app-debug.apk
+
+          test -f \
+            projeto/kaique-ai/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Disponibilizar APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Kaique-AI-V4-APK
