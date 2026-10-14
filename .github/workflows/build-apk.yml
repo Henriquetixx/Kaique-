@@ -12,13 +12,16 @@ permissions:
 
 jobs:
   android:
+    name: Compilar Android
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Baixar projeto
         uses: actions/checkout@v4
 
       - name: Extrair Kaique AI
+        shell: bash
         run: |
           mkdir -p projeto
           unzip -q -o kaique-ai-v4-corrigido.zip -d projeto
@@ -31,10 +34,23 @@ jobs:
           java-version: '17'
 
       - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar ferramentas Android
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"
+          fi
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager nao encontrado"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -43,11 +59,23 @@ jobs:
 
       - name: Compilar APK
         working-directory: projeto/kaique-ai
-        run: gradle --no-daemon :app:assembleDebug
+        shell: bash
+        run: |
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Localizar APK
+        if: success()
+        shell: bash
+        run: |
+          find projeto/kaique-ai/app/build/outputs/apk \
+            -type f -name "*.apk" -print
+          test -f projeto/kaique-ai/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Disponibilizar APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: kaique-ai-v4-debug-apk
+          name: Kaique-AI-V4-APK
           path: projeto/kaique-ai/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
